@@ -10,29 +10,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
   
   return GoRouter(
-    initialLocation: '/login',
+    initialLocation: '/chat',
     redirect: (context, state) {
       final isLoggedIn = authState.isAuthenticated;
       final isLoggingIn = state.matchedLocation == '/login' || 
                          state.matchedLocation == '/register';
       
-      if (!isLoggedIn && !isLoggingIn) {
+  /*     if (!isLoggedIn && !isLoggingIn) {
         return '/login';
-      }
+      } 
       if (isLoggedIn && isLoggingIn) {
         return '/chat';
-      }
-      return null;
+      } */
+      return '/chat';
     },
     routes: [
-      GoRoute(
+    /*   GoRoute(
         path: '/login',
         builder: (context, state) => const LoginPage(),
       ),
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterPage(),
-      ),
+      ), */
       GoRoute(
         path: '/chat',
         builder: (context, state) => const ChatPage(),

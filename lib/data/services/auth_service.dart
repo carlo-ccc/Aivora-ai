@@ -1,4 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+/* import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/user_model.dart';
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
@@ -53,4 +53,4 @@ class _StoredUser {
   final UserModel user;
   final String password;
   _StoredUser({required this.user, required this.password});
-}
+} */

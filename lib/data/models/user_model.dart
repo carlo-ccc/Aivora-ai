@@ -9,7 +9,7 @@ class UserModel {
   final String username;
   final String? avatar;
   final DateTime createdAt;
-  
+   
   const UserModel({
     required this.id,
     required this.email,
@@ -22,4 +22,4 @@ class UserModel {
       _$UserModelFromJson(json);
   
   Map<String, dynamic> toJson() => _$UserModelToJson(this);
-}
+} 

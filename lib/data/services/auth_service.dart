@@ -1,4 +1,4 @@
-/* import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/user_model.dart';
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
@@ -9,6 +9,21 @@ class AuthService {
 
   Future<UserModel> login(String email, String password) async {
     await Future.delayed(const Duration(milliseconds: 300));
+    final identifier = email.trim().toLowerCase();
+
+    // 固定登录逻辑：用户名为 'carlo' 且密码为 '123456' 直接登录成功
+    if (identifier == 'carlo' && password == '123456') {
+      final user = UserModel(
+        id: 'u_carlo',
+        email: 'carlo@example.com',
+        username: 'carlo',
+        avatar: null,
+        createdAt: DateTime.now(),
+      );
+      _currentUser = user;
+      return user;
+    }
+
     final key = email.toLowerCase();
     final record = _usersByEmail[key];
     if (record == null || record.password != password) {
@@ -53,4 +68,4 @@ class _StoredUser {
   final UserModel user;
   final String password;
   _StoredUser({required this.user, required this.password});
-} */
+}

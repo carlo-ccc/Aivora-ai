@@ -8,31 +8,29 @@ import '../../presentation/providers/auth_provider.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
-  
+
   return GoRouter(
-    initialLocation: '/chat',
+    initialLocation: '/login',
     redirect: (context, state) {
       final isLoggedIn = authState.isAuthenticated;
-      final isLoggingIn = state.matchedLocation == '/login' || 
-                         state.matchedLocation == '/register';
-      
-  /*     if (!isLoggedIn && !isLoggingIn) {
+      final isAuthRoute =
+          state.matchedLocation == '/login' || state.matchedLocation == '/register';
+
+      // 未登录，拦截到登录页
+      if (!isLoggedIn && !isAuthRoute) {
         return '/login';
-      } 
-      if (isLoggedIn && isLoggingIn) {
+      }
+      // 已登录，避免停留在登录/注册页
+      if (isLoggedIn && isAuthRoute) {
         return '/chat';
-      } */
-      return '/chat';
+      }
+      return null; // 不需要重定向
     },
     routes: [
-    /*   GoRoute(
+      GoRoute(
         path: '/login',
         builder: (context, state) => const LoginPage(),
       ),
-      GoRoute(
-        path: '/register',
-        builder: (context, state) => const RegisterPage(),
-      ), */
       GoRoute(
         path: '/chat',
         builder: (context, state) => const ChatPage(),

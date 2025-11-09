@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../data/services/settings_service.dart';
+import '../../data/services/setting_service.dart';
 
 class SettingsState {
   final String? apiKey;

@@ -14,12 +14,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  ProviderSubscription<AuthState>? _authSub;
 
   @override
   void initState() {
     super.initState();
-    // 监听登录状态与错误提示
-    ref.listen<AuthState>(authProvider, (prev, next) {
+    // 使用 listenManual 在生命周期方法中订阅，并在 dispose 里释放
+    _authSub = ref.listenManual<AuthState>(authProvider, (prev, next) {
       if (next.error != null && next.error!.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(next.error!)),
@@ -33,6 +34,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   void dispose() {
+    _authSub?.close();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();

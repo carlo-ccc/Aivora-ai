@@ -1,5 +1,5 @@
 # Aivora-ai
-An open-source, modern-design AI chat app
+A Flutter-based intelligent assistant providing chat interaction and visual recognition functionalities.
 
 ---项目目录结构：
 lib/

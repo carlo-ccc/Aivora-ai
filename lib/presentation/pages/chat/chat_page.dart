@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 import '../../../data/models/message_model.dart';
 import '../../providers/auth_provider.dart';
+import '../../../data/services/ai_service.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key});
@@ -58,21 +59,43 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     _textController.clear();
     _scrollToBottom();
 
-    await Future.delayed(const Duration(milliseconds: 600));
+    try {
+      final ai = ref.read(aiServiceProvider);
+      final history = _messages
+          .map((m) => {
+                'role': m.isUser ? 'user' : 'assistant',
+                'content': m.content,
+              })
+          .toList();
 
-    setState(() {
-      _messages.add(
-        MessageModel(
-          id: _uuid.v4(),
-          content: '[$_selectedModel] 已收到：$text',
-          isUser: false,
-          timestamp: DateTime.now(),
-          aiModel: _selectedModel,
-        ),
+      final reply = await ai.sendChat(
+        model: _selectedModel,
+        messages: history,
       );
-      _isSending = false;
-    });
-    _scrollToBottom();
+
+      setState(() {
+        _messages.add(
+          MessageModel(
+            id: _uuid.v4(),
+            content: reply,
+            isUser: false,
+            timestamp: DateTime.now(),
+            aiModel: _selectedModel,
+          ),
+        );
+        _isSending = false;
+      });
+      _scrollToBottom();
+    } catch (e) {
+      setState(() {
+        _isSending = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    }
   }
 
   void _selectModel(String model) {
@@ -265,7 +288,9 @@ class _AppDrawer extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.settings),
               title: const Text('设置'),
-              onTap: () {},
+              onTap: () {
+                context.go('/settings');
+              },
             ),
             const Spacer(),
             ListTile(

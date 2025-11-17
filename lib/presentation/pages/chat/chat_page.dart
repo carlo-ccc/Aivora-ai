@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/models/message_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../../data/services/ai_service.dart';
+import 'package:image_picker/image_picker.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key});
@@ -20,6 +21,34 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final _uuid = const Uuid();
   bool _isSending = false;
   String _selectedModel = 'gpt-4o-mini';
+
+  Future<void> _openCamera() async {
+    try {
+      final picker = ImagePicker();
+      final XFile? file = await picker.pickImage(source: ImageSource.camera);
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('拍摄完成'),
+          content: SizedBox(
+            width: 240,
+            child: Image.memory(bytes, fit: BoxFit.cover),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('关闭')),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('打开相机失败: $e')),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -116,6 +145,38 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           _ModelPicker(
             current: _selectedModel,
             onSelected: _selectModel,
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.handyman),
+            onSelected: (value) {
+              if (value == 'recognize') {
+                _openCamera();
+              } else if (value == 'settings') {
+                context.go('/settings');
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem<String>(
+                value: 'recognize',
+                child: Row(
+                  children: const [
+                    Icon(Icons.camera_alt, size: 18),
+                    SizedBox(width: 8),
+                    Text('识别'),
+                  ],
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'settings',
+                child: Row(
+                  children: const [
+                    Icon(Icons.settings, size: 18),
+                    SizedBox(width: 8),
+                    Text('设置'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),

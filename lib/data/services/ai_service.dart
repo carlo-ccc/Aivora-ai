@@ -39,8 +39,25 @@ class AiService {
     );
 
     final data = resp.data;
-    final content = data is Map ? data['choices']?[0]?['message']?['content'] : null;
-    if (content is String && content.isNotEmpty) {
+    String? content;
+
+    if (data is Map<String, dynamic>) {
+      final choices = data['choices'];
+      if (choices is List && choices.isNotEmpty) {
+        final first = choices.first;
+        if (first is Map<String, dynamic>) {
+          final message = first['message'];
+          if (message is Map<String, dynamic>) {
+            final c = message['content'];
+            if (c is String && c.isNotEmpty) {
+              content = c;
+            }
+          }
+        }
+      }
+    }
+
+    if (content != null) {
       return content;
     }
     throw Exception('响应格式不正确或为空');

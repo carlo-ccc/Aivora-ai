@@ -6,6 +6,7 @@ import '../../../data/models/message_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../../data/services/ai_service.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../data/services/vision_label_service.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key});
@@ -27,21 +28,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       final picker = ImagePicker();
       final XFile? file = await picker.pickImage(source: ImageSource.camera);
       if (file == null) return;
-      final bytes = await file.readAsBytes();
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('拍摄完成'),
-          content: SizedBox(
-            width: 240,
-            child: Image.memory(bytes, fit: BoxFit.cover),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('关闭')),
-          ],
-        ),
-      );
+      await _analyzeCapturedImage(file);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>用于拍摄食物图片进行识别与分析</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>用于选择食物图片进行识别与分析</string>
 </dict>
 </plist>

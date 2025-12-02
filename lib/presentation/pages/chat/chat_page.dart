@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../../data/services/ai_service.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../data/services/vision_label_service.dart';
+import 'dart:typed_data';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key});
@@ -34,6 +35,73 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('打开相机失败: $e')),
       );
+    }
+  }
+
+  bool _modelSupportsVision(String model) {
+    final m = model.toLowerCase();
+    return m.contains('gpt-4o'); // 支持 gpt-4o / gpt-4o-mini
+  }
+
+  Future<void> _analyzeCapturedImage(XFile file) async {
+    setState(() {
+      _isSending = true;
+    });
+
+    try {
+      final vision = ref.read(visionLabelServiceProvider);
+      final result = await vision.labelFoodFromFile(file.path);
+      final labels = result.labels;
+
+      final unreliable = !result.isFood || result.topConfidence < 0.70 || labels.isEmpty;
+      final attachImage = unreliable && _modelSupportsVision(_selectedModel);
+
+      Uint8List? bytes;
+      if (attachImage) {
+        bytes = await file.readAsBytes();
+      }
+
+      final ai = ref.read(aiServiceProvider);
+      final reply = await ai.analyzeFood(
+        model: _selectedModel,
+        labels: labels,
+        imageBytes: bytes,
+      );
+
+      setState(() {
+        _messages.add(
+          MessageModel(
+            id: _uuid.v4(),
+            content: attachImage
+                ? 'ML Kit 识别不够可靠（置信度 ${result.topConfidence.toStringAsFixed(2)}），已附带图片交由模型视觉分析。标签：${labels.isEmpty ? '无' : labels.join(', ')}'
+                : 'ML Kit 标签：${labels.isEmpty ? '无' : labels.join(', ')}，仅用标签文本进行分析。',
+            isUser: true,
+            timestamp: DateTime.now(),
+            aiModel: null,
+          ),
+        );
+        _messages.add(
+          MessageModel(
+            id: _uuid.v4(),
+            content: reply,
+            isUser: false,
+            timestamp: DateTime.now(),
+            aiModel: _selectedModel,
+          ),
+        );
+        _isSending = false;
+      });
+
+      _scrollToBottom();
+    } catch (e) {
+      setState(() {
+        _isSending = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('图片识别/分析失败：$e')),
+        );
+      }
     }
   }
 

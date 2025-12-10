@@ -229,6 +229,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.handyman, color: Colors.black54),
+            color: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             onSelected: (value) {
               if (value == 'recognize') {
                 _openCamera();
@@ -239,22 +241,30 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             itemBuilder: (context) => [
               PopupMenuItem<String>(
                 value: 'recognize',
-                child: Row(
-                  children: const [
-                    Icon(Icons.camera_alt, size: 18, color: Colors.black54),
-                    SizedBox(width: 8),
-                    Text('识别'),
-                  ],
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.camera_alt, size: 18, color: Colors.black54),
+                      SizedBox(width: 8),
+                      Text('识别'),
+                    ],
+                  ),
                 ),
               ),
               PopupMenuItem<String>(
                 value: 'settings',
-                child: Row(
-                  children: const [
-                    Icon(Icons.settings, size: 18, color: Colors.black54),
-                    SizedBox(width: 8),
-                    Text('设置'),
-                  ],
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.settings, size: 18, color: Colors.black54),
+                      SizedBox(width: 8),
+                      Text('设置'),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -282,69 +292,57 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               },
             ),
           ),
-          Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                top: BorderSide(color: Color(0xFFE5E7EB), width: 1),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Color(0x14000000),
-                  blurRadius: 10,
-                  offset: Offset(0, -2),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _textController,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _sendMessage(),
-                        decoration: InputDecoration(
-                          hintText: '输入消息...',
-                          filled: true,
-                          fillColor: const Color(0xFFF9FAFB),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _textController,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _sendMessage(),
+                      decoration: InputDecoration(
+                        hintText: '输入消息...',
+                        filled: true,
+                        fillColor: const Color(0xFFF9FAFB),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
                         ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        suffixIcon: Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: _isSending
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : IconButton(
+                                  icon: Icon(
+                                    Icons.send,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                  onPressed: _sendMessage,
+                                ),
+                        ),
+                        suffixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    _isSending
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : IconButton(
-                            icon: Icon(
-                              Icons.send,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            onPressed: _sendMessage,
-                          ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -433,17 +431,23 @@ class _ModelPicker extends StatelessWidget {
     return PopupMenuButton<String>(
       initialValue: current,
       icon: const Icon(Icons.tune, color: Colors.black54),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       onSelected: onSelected,
       itemBuilder: (context) {
         return models
             .map((m) => PopupMenuItem<String>(
                   value: m,
-                  child: Row(
-                    children: [
-                      if (m == current) const Icon(Icons.check, size: 18, color: Colors.black54),
-                      if (m == current) const SizedBox(width: 6),
-                      Text(m),
-                    ],
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (m == current) const Icon(Icons.check, size: 18, color: Colors.black54),
+                        if (m == current) const SizedBox(width: 6),
+                        Text(m),
+                      ],
+                    ),
                   ),
                 ))
             .toList();

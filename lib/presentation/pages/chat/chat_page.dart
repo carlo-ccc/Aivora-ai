@@ -8,6 +8,7 @@ import '../../../data/services/ai_service.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../data/services/vision_label_service.dart';
 import 'dart:typed_data';
+import '../../providers/settings_service.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key});
@@ -59,6 +60,37 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       Uint8List? bytes;
       if (attachImage) {
         bytes = await file.readAsBytes();
+      }
+
+      final settingsState = ref.read(settingsProvider);
+      final apiKey = settingsState.apiKey ?? '';
+      if (apiKey.isEmpty) {
+        setState(() {
+          _messages.add(
+            MessageModel(
+              id: _uuid.v4(),
+              content: attachImage
+                  ? 'ML Kit 识别不够可靠（置信度 ${result.topConfidence.toStringAsFixed(2)}），标签：${labels.isEmpty ? '无' : labels.join(', ')}。未配置 API Key，无法执行模型视觉分析。'
+                  : 'ML Kit 标签：${labels.isEmpty ? '无' : labels.join(', ')}。未配置 API Key，暂仅展示本地识别结果。',
+              isUser: true,
+              timestamp: DateTime.now(),
+              aiModel: null,
+            ),
+          );
+          _messages.add(
+            MessageModel(
+              id: _uuid.v4(),
+              content: '配置 API Key 后，将结合标签${attachImage ? '与照片' : ''}提供营养分析与建议。',
+              isUser: false,
+              timestamp: DateTime.now(),
+              aiModel: null,
+            ),
+          );
+          _isSending = false;
+        });
+
+        _scrollToBottom();
+        return;
       }
 
       final ai = ref.read(aiServiceProvider);

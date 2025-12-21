@@ -69,9 +69,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           _messages.add(
             MessageModel(
               id: _uuid.v4(),
-              content: attachImage
-                  ? 'ML Kit 识别不够可靠（置信度 ${result.topConfidence.toStringAsFixed(2)}），标签：${labels.isEmpty ? '无' : labels.join(', ')}。未配置 API Key，无法执行模型视觉分析。'
-                  : 'ML Kit 标签：${labels.isEmpty ? '无' : labels.join(', ')}。未配置 API Key，暂仅展示本地识别结果。',
+              content: '识别到的物体为：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}, 是否可靠：${unreliable ? '否' : '是'}。未配置 API Key，无法执行模型视觉分析。',
               isUser: true,
               timestamp: DateTime.now(),
               aiModel: null,
@@ -104,9 +102,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         _messages.add(
           MessageModel(
             id: _uuid.v4(),
-            content: attachImage
-                ? 'ML Kit 识别不够可靠（置信度 ${result.topConfidence.toStringAsFixed(2)}），已附带图片交由模型视觉分析。标签：${labels.isEmpty ? '无' : labels.join(', ')}'
-                : 'ML Kit 标签：${labels.isEmpty ? '无' : labels.join(', ')}，仅用标签文本进行分析。',
+            content: 'ML Kit 识别到的物体为：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}, 是否可靠：${unreliable ? '否' : '是'}',
             isUser: true,
             timestamp: DateTime.now(),
             aiModel: null,

@@ -50,17 +50,27 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     });
 
     try {
+      final pickedImageBytes = await file.readAsBytes();
+      setState(() {
+        _messages.add(
+          MessageModel(
+            id: _uuid.v4(),
+            content: '',
+            isUser: true,
+            timestamp: DateTime.now(),
+            aiModel: null,
+            imageBytes: pickedImageBytes,
+          ),
+        );
+      });
+      _scrollToBottom();
+
       final vision = ref.read(visionLabelServiceProvider);
       final result = await vision.labelFoodFromFile(file.path);
       final labels = result.labels;
 
       final unreliable = !result.isFood || result.topConfidence < 0.70 || labels.isEmpty;
       final attachImage = unreliable && _modelSupportsVision(_selectedModel);
-
-      Uint8List? bytes;
-      if (attachImage) {
-        bytes = await file.readAsBytes();
-      }
 
       final settingsState = ref.read(settingsProvider);
       final apiKey = settingsState.apiKey ?? '';
@@ -69,16 +79,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           _messages.add(
             MessageModel(
               id: _uuid.v4(),
-              content: '识别到的物体为：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}, 是否可靠：${unreliable ? '否' : '是'}。未配置 API Key，无法执行模型视觉分析。',
-              isUser: true,
-              timestamp: DateTime.now(),
-              aiModel: null,
-            ),
-          );
-          _messages.add(
-            MessageModel(
-              id: _uuid.v4(),
-              content: '配置 API Key 后，将结合标签${attachImage ? '与照片' : ''}提供营养分析与建议。',
+              content:
+                  'ML Kit 识别到的物体为：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}, 是否可靠：${unreliable ? '否' : '是'}\n\n未配置 API Key，无法执行模型视觉分析。配置 API Key 后，将结合标签${attachImage ? '与照片' : ''}提供营养分析与建议。',
               isUser: false,
               timestamp: DateTime.now(),
               aiModel: null,
@@ -95,7 +97,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       final reply = await ai.analyzeFood(
         model: _selectedModel,
         labels: labels,
-        imageBytes: bytes,
+        imageBytes: attachImage ? pickedImageBytes : null,
       );
 
       setState(() {
@@ -103,7 +105,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           MessageModel(
             id: _uuid.v4(),
             content: 'ML Kit 识别到的物体为：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}, 是否可靠：${unreliable ? '否' : '是'}',
-            isUser: true,
+            isUser: false,
             timestamp: DateTime.now(),
             aiModel: null,
           ),
@@ -174,6 +176,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     try {
       final ai = ref.read(aiServiceProvider);
       final history = _messages
+          .where((m) => m.content.trim().isNotEmpty)
           .map((m) => {
                 'role': m.isUser ? 'user' : 'assistant',
                 'content': m.content,
@@ -427,13 +430,30 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ],
             ),
-            child: Text(
-              message.content,
-              style: TextStyle(
-                color: fg,
-                fontSize: 15.5,
-                height: 1.5,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (message.imageBytes != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(
+                      message.imageBytes!,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                if (message.imageBytes != null && message.content.trim().isNotEmpty)
+                  const SizedBox(height: 10),
+                if (message.content.trim().isNotEmpty)
+                  Text(
+                    message.content,
+                    style: TextStyle(
+                      color: fg,
+                      fontSize: 15.5,
+                      height: 1.5,
+                    ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(height: 6),

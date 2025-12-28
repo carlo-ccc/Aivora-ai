@@ -6,15 +6,15 @@ class AuthState {
   final UserModel? user;
   final bool isLoading;
   final String? error;
-  
+
   const AuthState({
     this.user,
     this.isLoading = false,
     this.error,
   });
-  
+
   bool get isAuthenticated => user != null;
-  
+
   AuthState copyWith({
     UserModel? user,
     bool? isLoading,
@@ -23,38 +23,49 @@ class AuthState {
     return AuthState(
       user: user ?? this.user,
       isLoading: isLoading ?? this.isLoading,
-      error: error ?? this.error,
+      error: error,
     );
   }
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _authService;
-  
-  AuthNotifier(this._authService) : super(const AuthState());
-  
+
+  AuthNotifier(this._authService) : super(const AuthState()) {
+    _restore();
+  }
+
+  Future<void> _restore() async {
+    try {
+      final user = await _authService.restoreSession();
+      if (user != null) {
+        state = state.copyWith(user: user, error: null);
+      }
+    } catch (_) {}
+  }
+
   Future<void> login(String email, String password) async {
     state = state.copyWith(isLoading: true, error: null);
-    
+
     try {
       final user = await _authService.login(email, password);
-      state = state.copyWith(user: user, isLoading: false);
+      state = state.copyWith(user: user, isLoading: false, error: null);
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
     }
   }
-  
+
   Future<void> register(String email, String password, String username) async {
     state = state.copyWith(isLoading: true, error: null);
-    
+
     try {
       final user = await _authService.register(email, password, username);
-      state = state.copyWith(user: user, isLoading: false);
+      state = state.copyWith(user: user, isLoading: false, error: null);
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
     }
   }
-  
+
   Future<void> logout() async {
     await _authService.logout();
     state = const AuthState();

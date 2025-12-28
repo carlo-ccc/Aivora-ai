@@ -7,8 +7,11 @@ import '../../providers/auth_provider.dart';
 import '../../../data/services/ai_service.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../data/services/vision_label_service.dart';
+import '../../../data/services/tflite_food_classifier_service.dart';
 import 'dart:typed_data';
 import '../../providers/settings_service.dart';
+
+enum _RecognizeBackend { mlkit, tflite }
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key});
@@ -25,12 +28,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   bool _isSending = false;
   String _selectedModel = 'gpt-4o-mini';
 
-  Future<void> _openCamera() async {
+  Future<void> _openCamera({required _RecognizeBackend backend}) async {
     try {
       final picker = ImagePicker();
       final XFile? file = await picker.pickImage(source: ImageSource.camera);
       if (file == null) return;
-      await _analyzeCapturedImage(file);
+
+      if (backend == _RecognizeBackend.mlkit) {
+        await _analyzeCapturedImage(file);
+      } else {
+        await _analyzeCapturedImageWithTflite(file);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -105,6 +113,97 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           MessageModel(
             id: _uuid.v4(),
             content: 'ML Kit 识别到的物体为：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}, 是否可靠：${unreliable ? '否' : '是'}',
+            isUser: false,
+            timestamp: DateTime.now(),
+            aiModel: null,
+          ),
+        );
+        _messages.add(
+          MessageModel(
+            id: _uuid.v4(),
+            content: reply,
+            isUser: false,
+            timestamp: DateTime.now(),
+            aiModel: _selectedModel,
+          ),
+        );
+        _isSending = false;
+      });
+
+      _scrollToBottom();
+    } catch (e) {
+      setState(() {
+        _isSending = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('图片识别/分析失败：$e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _analyzeCapturedImageWithTflite(XFile file) async {
+    setState(() {
+      _isSending = true;
+    });
+
+    try {
+      final pickedImageBytes = await file.readAsBytes();
+      setState(() {
+        _messages.add(
+          MessageModel(
+            id: _uuid.v4(),
+            content: '',
+            isUser: true,
+            timestamp: DateTime.now(),
+            aiModel: null,
+            imageBytes: pickedImageBytes,
+          ),
+        );
+      });
+      _scrollToBottom();
+
+      final classifier = ref.read(tfliteFoodClassifierServiceProvider);
+      final result = await classifier.classifyFoodFromBytes(pickedImageBytes);
+      final labels = result.labels;
+
+      final unreliable = result.topConfidence < 0.70 || labels.isEmpty;
+      final attachImage = unreliable && _modelSupportsVision(_selectedModel);
+
+      final settingsState = ref.read(settingsProvider);
+      final apiKey = settingsState.apiKey ?? '';
+      if (apiKey.isEmpty) {
+        setState(() {
+          _messages.add(
+            MessageModel(
+              id: _uuid.v4(),
+              content:
+                  'TFLite 识别到的食物为：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}, 是否可靠：${unreliable ? '否' : '是'}\n\n未配置 API Key，无法执行模型视觉分析。配置 API Key 后，将结合标签${attachImage ? '与照片' : ''}提供营养分析与建议。',
+              isUser: false,
+              timestamp: DateTime.now(),
+              aiModel: null,
+            ),
+          );
+          _isSending = false;
+        });
+
+        _scrollToBottom();
+        return;
+      }
+
+      final ai = ref.read(aiServiceProvider);
+      final reply = await ai.analyzeFood(
+        model: _selectedModel,
+        labels: labels,
+        imageBytes: attachImage ? pickedImageBytes : null,
+      );
+
+      setState(() {
+        _messages.add(
+          MessageModel(
+            id: _uuid.v4(),
+            content: 'TFLite 识别到的食物为：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}, 是否可靠：${unreliable ? '否' : '是'}',
             isUser: false,
             timestamp: DateTime.now(),
             aiModel: null,
@@ -263,15 +362,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             color: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             onSelected: (value) {
-              if (value == 'recognize') {
-                _openCamera();
+              if (value == 'recognize_mlkit') {
+                _openCamera(backend: _RecognizeBackend.mlkit);
+              } else if (value == 'recognize_tflite') {
+                _openCamera(backend: _RecognizeBackend.tflite);
               } else if (value == 'settings') {
                 context.go('/settings');
               }
             },
             itemBuilder: (context) => [
               PopupMenuItem<String>(
-                value: 'recognize',
+                value: 'recognize_mlkit',
                 child: Center(
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -279,7 +380,21 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     children: const [
                       Icon(Icons.camera_alt, size: 18, color: Colors.black54),
                       SizedBox(width: 8),
-                      Text('识别'),
+                      Text('识别（ML Kit）'),
+                    ],
+                  ),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'recognize_tflite',
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.memory, size: 18, color: Colors.black54),
+                      SizedBox(width: 8),
+                      Text('识别（TFLite）'),
                     ],
                   ),
                 ),

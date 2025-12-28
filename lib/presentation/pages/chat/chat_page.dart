@@ -366,8 +366,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 _openCamera(backend: _RecognizeBackend.mlkit);
               } else if (value == 'recognize_tflite') {
                 _openCamera(backend: _RecognizeBackend.tflite);
-              } else if (value == 'settings') {
-                context.go('/settings');
               }
             },
             itemBuilder: (context) => [
@@ -399,20 +397,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   ),
                 ),
               ),
-              PopupMenuItem<String>(
-                value: 'settings',
-                child: Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Icon(Icons.settings, size: 18, color: Colors.black54),
-                      SizedBox(width: 8),
-                      Text('设置'),
-                    ],
-                  ),
-                ),
-              ),
+
             ],
           ),
         ],

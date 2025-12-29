@@ -21,8 +21,10 @@ class AiService {
       throw Exception('请先在设置中配置 API Key');
     }
 
-    // 兼容 OpenAI/OpenRouter：两者的 chat/completions 均可用
-    final url = '$baseUrl/chat/completions';
+    // 兼容 OpenAI/OpenRouter/Groq（OpenAI 兼容接口）：chat/completions
+    final url = baseUrl.endsWith('/chat/completions')
+        ? baseUrl
+        : '$baseUrl/chat/completions';
     final headers = {
       'Authorization': 'Bearer $apiKey',
       'Content-Type': 'application/json',
@@ -82,20 +84,24 @@ class AiService {
       'Content-Type': 'application/json',
     };
 
-    final List<Map<String, dynamic>> content = [
-      {
-        'type': 'text',
-        'text':
-            '你是一名专业营养师。结合提供的照片（若有）与识别标签：${labels.join(', ')}，请分析菜品的主要成分，估算每100g与典型一份的营养（热量、蛋白质、碳水、脂肪、纤维、钠），列出可能的过敏原，并给出健康饮食建议。用中文输出，结构化为小标题与列表。',
-      },
-    ];
+    final prompt =
+        '你是一名专业营养师。结合提供的照片（若有）与识别标签：${labels.join(', ')}，请分析菜品的主要成分，估算每100g与典型一份的营养（热量、蛋白质、碳水、脂肪、纤维、钠），列出可能的过敏原，并给出健康饮食建议。用中文输出，结构化为小标题与列表。';
 
+    final dynamic userContent;
     if (imageBytes != null) {
       final b64 = base64Encode(imageBytes);
-      content.add({
-        'type': 'image_url',
-        'image_url': {'url': 'data:image/jpeg;base64,$b64'},
-      });
+      userContent = [
+        {
+          'type': 'text',
+          'text': prompt,
+        },
+        {
+          'type': 'image_url',
+          'image_url': {'url': 'data:image/jpeg;base64,$b64'},
+        },
+      ];
+    } else {
+      userContent = prompt;
     }
 
     final payload = {
@@ -103,7 +109,7 @@ class AiService {
       'messages': [
         {
           'role': 'user',
-          'content': content,
+          'content': userContent,
         }
       ],
     };

@@ -127,6 +127,46 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     }
   }
 
+  Future<void> updateLlmModel({
+    required String id,
+    required String name,
+    required String baseUrl,
+    required String apiKey,
+  }) async {
+    final trimmedName = name.trim();
+    final trimmedBaseUrl = baseUrl.trim();
+    final trimmedApiKey = apiKey.trim();
+    if (trimmedName.isEmpty || trimmedBaseUrl.isEmpty || trimmedApiKey.isEmpty) {
+      state = state.copyWith(error: '请填写 Name / Base URL / API Key');
+      return;
+    }
+
+    final idx = state.llmModels.indexWhere((m) => m.id == id);
+    if (idx < 0) return;
+
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final next = [...state.llmModels];
+      next[idx] = LlmModelConfig(
+        id: id,
+        name: trimmedName,
+        baseUrl: trimmedBaseUrl,
+        apiKey: trimmedApiKey,
+      );
+      await _service.setLlmModels(next);
+
+      final selectedId = state.selectedLlmModelId;
+      if (selectedId == id) {
+        await _service.setApiKey(trimmedApiKey);
+        await _service.setBaseUrl(trimmedBaseUrl);
+      }
+
+      state = state.copyWith(llmModels: next, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(error: e.toString(), isLoading: false);
+    }
+  }
+
   Future<void> removeLlmModel(String id) async {
     state = state.copyWith(isLoading: true, error: null);
     try {

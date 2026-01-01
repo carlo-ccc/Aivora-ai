@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/settings_service.dart';
+import '../../../data/services/setting_service.dart' show LlmModelConfig;
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -138,6 +139,99 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
+  Future<void> _editModel(LlmModelConfig model) async {
+    final nameController = TextEditingController(text: model.name);
+    final baseUrlController = TextEditingController(text: model.baseUrl);
+    final apiKeyController = TextEditingController(text: model.apiKey);
+
+    final nameFocus = FocusNode();
+    final baseUrlFocus = FocusNode();
+    final apiKeyFocus = FocusNode();
+
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        useRootNavigator: false,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('编辑模型'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    focusNode: nameFocus,
+                    autofocus: true,
+                    textInputAction: TextInputAction.next,
+                    onEditingComplete: () => baseUrlFocus.requestFocus(),
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                      hintText: '例如：gpt-4o-mini / llama-3.1-70b-versatile',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: baseUrlController,
+                    focusNode: baseUrlFocus,
+                    keyboardType: TextInputType.url,
+                    textInputAction: TextInputAction.next,
+                    onEditingComplete: () => apiKeyFocus.requestFocus(),
+                    decoration: const InputDecoration(
+                      labelText: 'Base URL',
+                      hintText: '例如：https://api.openai.com/v1',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: apiKeyController,
+                    focusNode: apiKeyFocus,
+                    textInputAction: TextInputAction.done,
+                    enableSuggestions: false,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'API Key',
+                      hintText: '例如：sk-xxxx / openrouter-xxxx',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('取消'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('保存'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (ok != true) return;
+      if (!mounted) return;
+
+      await ref.read(settingsProvider.notifier).updateLlmModel(
+            id: model.id,
+            name: nameController.text,
+            baseUrl: baseUrlController.text,
+            apiKey: apiKeyController.text,
+          );
+    } finally {
+      nameFocus.dispose();
+      baseUrlFocus.dispose();
+      apiKeyFocus.dispose();
+
+      nameController.dispose();
+      baseUrlController.dispose();
+      apiKeyController.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(settingsProvider);
@@ -183,11 +277,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     onTap: state.isLoading
                         ? null
                         : () => ref.read(settingsProvider.notifier).setSelectedLlmModel(m.id),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: state.isLoading
-                          ? null
-                          : () => ref.read(settingsProvider.notifier).removeLlmModel(m.id),
+                    onLongPress: state.isLoading ? null : () => _editModel(m),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined),
+                          onPressed: state.isLoading ? null : () => _editModel(m),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: state.isLoading
+                              ? null
+                              : () => ref.read(settingsProvider.notifier).removeLlmModel(m.id),
+                        ),
+                      ],
                     ),
                   ),
                 );

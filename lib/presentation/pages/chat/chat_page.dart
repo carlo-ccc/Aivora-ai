@@ -225,6 +225,65 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
 
+  Future<void> _openGallery({required _RecognizeBackend backend}) async {
+    try {
+      final picker = ImagePicker();
+      final XFile? file = await picker.pickImage(source: ImageSource.gallery);
+      if (file == null) return;
+
+      if (backend == _RecognizeBackend.mlkit) {
+        await _analyzeCapturedImage(file);
+      } else {
+        await _analyzeCapturedImageWithTflite(file);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('打开相册失败: $e')),
+      );
+    }
+  }
+
+  Future<void> _chooseImageSource({required _RecognizeBackend backend}) async {
+    if (_isSending) return;
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Colors.black54),
+                title: const Text('相机'),
+                onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.black54),
+                title: const Text('相册'),
+                onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || source == null) return;
+
+    if (source == ImageSource.camera) {
+      await _openCamera(backend: backend);
+    } else {
+      await _openGallery(backend: backend);
+    }
+  }
+
   bool _modelSupportsVision(String model) {
     final m = model.toLowerCase();
     return m.contains('gpt-4o'); // 支持 gpt-4o / gpt-4o-mini
@@ -647,9 +706,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             onSelected: (value) {
               if (value == 'recognize_mlkit') {
-                _openCamera(backend: _RecognizeBackend.mlkit);
+                _chooseImageSource(backend: _RecognizeBackend.mlkit);
               } else if (value == 'recognize_tflite') {
-                _openCamera(backend: _RecognizeBackend.tflite);
+                _chooseImageSource(backend: _RecognizeBackend.tflite);
               }
             },
             itemBuilder: (context) => [
@@ -681,7 +740,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   ),
                 ),
               ),
-
             ],
           ),
         ],

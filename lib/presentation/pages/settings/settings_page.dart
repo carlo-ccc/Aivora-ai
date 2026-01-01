@@ -12,6 +12,31 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
+  ProviderSubscription<SettingsState>? _settingsSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _settingsSub = ref.listenManual<SettingsState>(settingsProvider, (prev, next) {
+      final err = next.error;
+      if (err == null || err.isEmpty) return;
+      if (prev?.error == err) return;
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        if (messenger == null) return;
+        messenger.showSnackBar(SnackBar(content: Text(err)));
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _settingsSub?.close();
+    super.dispose();
+  }
+
   void _back() {
     final navigator = Navigator.of(context);
     if (navigator.canPop()) {
@@ -26,47 +51,67 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final baseUrlController = TextEditingController(text: 'https://api.openai.com/v1');
     final apiKeyController = TextEditingController();
 
+    final nameFocus = FocusNode();
+    final baseUrlFocus = FocusNode();
+    final apiKeyFocus = FocusNode();
+
     try {
       final ok = await showDialog<bool>(
         context: context,
-        builder: (context) {
+        useRootNavigator: false,
+        barrierDismissible: false,
+        builder: (dialogContext) {
           return AlertDialog(
             title: const Text('添加模型'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Name',
-                    hintText: '例如：gpt-4o-mini / llama-3.1-70b-versatile',
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    focusNode: nameFocus,
+                    autofocus: true,
+                    textInputAction: TextInputAction.next,
+                    onEditingComplete: () => baseUrlFocus.requestFocus(),
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                      hintText: '例如：gpt-4o-mini / llama-3.1-70b-versatile',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: baseUrlController,
-                  decoration: const InputDecoration(
-                    labelText: 'Base URL',
-                    hintText: '例如：https://api.openai.com/v1',
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: baseUrlController,
+                    focusNode: baseUrlFocus,
+                    keyboardType: TextInputType.url,
+                    textInputAction: TextInputAction.next,
+                    onEditingComplete: () => apiKeyFocus.requestFocus(),
+                    decoration: const InputDecoration(
+                      labelText: 'Base URL',
+                      hintText: '例如：https://api.openai.com/v1',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: apiKeyController,
-                  decoration: const InputDecoration(
-                    labelText: 'API Key',
-                    hintText: '例如：sk-xxxx / openrouter-xxxx',
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: apiKeyController,
+                    focusNode: apiKeyFocus,
+                    textInputAction: TextInputAction.done,
+                    enableSuggestions: false,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'API Key',
+                      hintText: '例如：sk-xxxx / openrouter-xxxx',
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
+                onPressed: () => Navigator.of(dialogContext).pop(false),
                 child: const Text('取消'),
               ),
               ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
                 child: const Text('添加'),
               ),
             ],
@@ -75,6 +120,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       );
 
       if (ok != true) return;
+      if (!mounted) return;
 
       await ref.read(settingsProvider.notifier).addLlmModel(
             name: nameController.text,
@@ -82,6 +128,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             apiKey: apiKeyController.text,
           );
     } finally {
+      nameFocus.dispose();
+      baseUrlFocus.dispose();
+      apiKeyFocus.dispose();
+
       nameController.dispose();
       baseUrlController.dispose();
       apiKeyController.dispose();
@@ -90,15 +140,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<SettingsState>(settingsProvider, (prev, next) {
-      final err = next.error;
-      if (err != null && err.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(err)),
-        );
-      }
-    });
-
     final state = ref.watch(settingsProvider);
     final models = state.llmModels;
 

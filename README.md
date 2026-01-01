@@ -3,7 +3,6 @@
 An open-source, modern-design AI chat app built with Flutter. It runs on mobile and web (some on-device vision features are mobile-only).
 
 - Tech Stack: Flutter · Dart · Riverpod · GoRouter · Dio
-- License: Apache-2.0
 
 ## Features
 
@@ -13,7 +12,7 @@ An open-source, modern-design AI chat app built with Flutter. It runs on mobile 
 - Drawer + Settings: User entry points and configuration
 - Vision (mobile): Pick camera/gallery image and get food labels
   - ML Kit image labeling (`google_mlkit_image_labeling`)
-  - On-device TFLite food classifier (`tflite_flutter`)
+  - On-device TFLite food classifier (`tflite_flutter`) (modal: google/aiy)
   - Optional: use LLM to generate nutrition analysis from labels and (if model supports) image
 
 ## Screenshots
@@ -28,7 +27,6 @@ An open-source, modern-design AI chat app built with Flutter. It runs on mobile 
 ## Quick Start
 
 ```bat
-cd e:\selfGit\Aivora-ai
 flutter pub get
 flutter run
 ```
@@ -36,7 +34,6 @@ flutter run
 If you use FVM:
 
 ```bat
-cd e:\selfGit\Aivora-ai
 fvm install
 fvm flutter pub get
 fvm flutter run
@@ -52,14 +49,7 @@ This app calls an OpenAI-compatible Chat Completions API.
   - `Base URL`: e.g. `https://api.openai.com/v1` (the app auto-appends `/chat/completions`)
   - `API Key`: your token (stored locally in `shared_preferences`)
 
-Notes:
-- Do not commit API keys to git.
 - If `Base URL` is empty, requests will fail (the app will prompt you to configure it).
-
-## Demo Accounts
-
-- Admin shortcut: username/email `carlo`, password `123456` (see `lib/data/services/auth_service.dart`)
-- Register: creates a local user and stores it on-device (no backend)
 
 ## Platform Notes
 
@@ -86,22 +76,6 @@ lib/
       settings/
     providers/
 ```
-
-## Common Commands
-
-```bat
-flutter analyze
-flutter test
-flutter pub run build_runner build --delete-conflicting-outputs
-```
-
-## Architecture Overview
-
-- Routing: `go_router` with auth redirect (`lib/core/router/app_router.dart`)
-- State: Riverpod
-  - `authProvider`: session + login/register/logout (`lib/presentation/providers/auth_provider.dart`)
-  - `settingsProvider`: LLM model configs + selection (`lib/presentation/providers/settings_service.dart`)
-- Networking: `dio` (`lib/data/services/ai_service.dart`)
 
 ## Contributing
 

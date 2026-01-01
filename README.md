@@ -1,60 +1,115 @@
-# Aivora-ai
-A Flutter-based intelligent assistant providing chat interaction and visual recognition functionalities.
+# Aivora AI
 
----项目目录结构：
+An open-source, modern-design AI chat app built with Flutter. It runs on mobile and web (some on-device vision features are mobile-only).
+
+- Tech Stack: Flutter · Dart · Riverpod · GoRouter · Dio
+- License: Apache-2.0
+
+## Features
+
+- Auth (local demo): Register / Login / Logout (stored in `shared_preferences`)
+- AI Chat: Send/receive messages via OpenAI-compatible `POST /chat/completions`
+- Model management: Add multiple model configs (Name / Base URL / API Key) and switch between them
+- Drawer + Settings: User entry points and configuration
+- Vision (mobile): Pick camera/gallery image and get food labels
+  - ML Kit image labeling (`google_mlkit_image_labeling`)
+  - On-device TFLite food classifier (`tflite_flutter`)
+  - Optional: use LLM to generate nutrition analysis from labels and (if model supports) image
+
+## Screenshots
+
+- TODO
+
+## Requirements
+
+- Flutter: `3.35.7` (recommended via FVM; see `.fvmrc`)
+- Dart: `>=3.9.0 <4.0.0`
+
+## Quick Start
+
+```bat
+cd e:\selfGit\Aivora-ai
+flutter pub get
+flutter run
+```
+
+If you use FVM:
+
+```bat
+cd e:\selfGit\Aivora-ai
+fvm install
+fvm flutter pub get
+fvm flutter run
+```
+
+## Configuration (LLM)
+
+This app calls an OpenAI-compatible Chat Completions API.
+
+- Open the app → `Settings`
+- Add a model with:
+  - `Name`: model id (e.g. `gpt-4o-mini`)
+  - `Base URL`: e.g. `https://api.openai.com/v1` (the app auto-appends `/chat/completions`)
+  - `API Key`: your token (stored locally in `shared_preferences`)
+
+Notes:
+- Do not commit API keys to git.
+- If `Base URL` is empty, requests will fail (the app will prompt you to configure it).
+
+## Demo Accounts
+
+- Admin shortcut: username/email `carlo`, password `123456` (see `lib/data/services/auth_service.dart`)
+- Register: creates a local user and stores it on-device (no backend)
+
+## Platform Notes
+
+- Web: Core navigation + settings can run, but ML Kit / TFLite features are generally not available on web.
+- Mobile (Android/iOS): Vision features work (subject to platform/plugin support).
+
+## Project Structure
+
+```text
 lib/
-├── main.dart
-├── app.dart
-├── core/
-│   ├── constants/
-│   ├── theme/
-│   ├── utils/
-│   └── router/
-├── data/
-│   ├── models/
-│   ├── repositories/
-│   └── services/
-├── domain/
-│   ├── entities/
-│   └── repositories/
-├── presentation/
-│   ├── providers/
-│   ├── pages/
-│   │   ├── auth/
-│   │   ├── chat/
-│   │   └── settings/
-│   └── widgets/
-└── shared/
-    ├── extensions/
-    └── widgets/
+  main.dart
+  app.dart
+  core/
+    router/
+    theme/
+  data/
+    models/
+    services/
+  domain/
+  presentation/
+    pages/
+      auth/
+      chat/
+      settings/
+    providers/
+```
 
+## Common Commands
 
----运行时依赖（dependencies）
+```bat
+flutter analyze
+flutter test
+flutter pub run build_runner build --delete-conflicting-outputs
+```
 
-flutter_riverpod：现代、类型安全的状态管理。支持 Provider/AsyncValue/StateNotifier，热重载友好，解耦强、可测试。
+## Architecture Overview
 
-go_router：官方团队维护的路由库，声明式路由、深链接、重定向与守卫（redirect）开箱即用。
+- Routing: `go_router` with auth redirect (`lib/core/router/app_router.dart`)
+- State: Riverpod
+  - `authProvider`: session + login/register/logout (`lib/presentation/providers/auth_provider.dart`)
+  - `settingsProvider`: LLM model configs + selection (`lib/presentation/providers/settings_service.dart`)
+- Networking: `dio` (`lib/data/services/ai_service.dart`)
 
-dio：强大的 HTTP 客户端，请求/响应拦截器、取消、超时、FormData、文件上传下载等。
+## Contributing
 
-cupertino_icons：iOS 风格图标集，搭配 Cupertino 风格组件使用。
+Issues and PRs are welcome.
 
-shared_preferences：轻量级本地 KV 存储，适用于小体量配置/偏好（如 token、主题、语言等）。
+- Keep changes focused and incremental
+- Run `flutter analyze` and `flutter test` before submitting
 
-json_annotation：搭配 json_serializable 做 JSON 模型注解（@JsonSerializable() 等）。
+## License
 
-intl：本地化与国际化（日期、数字、货币格式化等）。
-
-uuid：生成唯一 ID（v4 随机、v5 命名空间等）。
-
-
-
-
----开发依赖（dev_dependencies）
-
-flutter_lints：官方推荐的 Lints 规则，统一代码风格与质量。
-
-build_runner：Dart 代码生成框架的驱动器（运行构建任务/监听）。
-
-json_serializable：结合 json_annotation 自动生成 fromJson/toJson 代码，减少样板代码。
-
+Apache License 2.0. See `LICENSE`.

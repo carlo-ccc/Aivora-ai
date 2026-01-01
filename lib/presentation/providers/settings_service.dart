@@ -60,12 +60,18 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       if (models.isEmpty) {
         selectedId = null;
         await _service.setSelectedLlmModelId(null);
+        await _service.setApiKey('');
+        await _service.setBaseUrl('');
       } else {
         final exists = selectedId != null && models.any((m) => m.id == selectedId);
         if (!exists) {
           selectedId = models.first.id;
           await _service.setSelectedLlmModelId(selectedId);
         }
+
+        final selected = models.firstWhere((m) => m.id == selectedId);
+        await _service.setApiKey(selected.apiKey);
+        await _service.setBaseUrl(selected.baseUrl);
       }
 
       state = state.copyWith(
@@ -104,12 +110,16 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       ];
       await _service.setLlmModels(next);
 
-      final selected = state.selectedLlmModelId ?? next.first.id;
-      await _service.setSelectedLlmModelId(selected);
+      final selectedId = state.selectedLlmModelId ?? next.first.id;
+      await _service.setSelectedLlmModelId(selectedId);
+
+      final selected = next.firstWhere((m) => m.id == selectedId);
+      await _service.setApiKey(selected.apiKey);
+      await _service.setBaseUrl(selected.baseUrl);
 
       state = state.copyWith(
         llmModels: next,
-        selectedLlmModelId: selected,
+        selectedLlmModelId: selectedId,
         isLoading: false,
       );
     } catch (e) {
@@ -130,6 +140,14 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
         nextSelected = next.isEmpty ? null : next.first.id;
       }
       await _service.setSelectedLlmModelId(nextSelected);
+      if (nextSelected == null) {
+        await _service.setApiKey('');
+        await _service.setBaseUrl('');
+      } else {
+        final selected = next.firstWhere((m) => m.id == nextSelected);
+        await _service.setApiKey(selected.apiKey);
+        await _service.setBaseUrl(selected.baseUrl);
+      }
 
       state = state.copyWith(
         llmModels: next,
@@ -142,12 +160,17 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   }
 
   Future<void> setSelectedLlmModel(String id) async {
-    final exists = state.llmModels.any((m) => m.id == id);
-    if (!exists) return;
+    final selected = state.llmModels.where((m) => m.id == id).cast<LlmModelConfig?>().firstWhere(
+          (m) => m != null,
+          orElse: () => null,
+        );
+    if (selected == null) return;
 
     state = state.copyWith(isLoading: true, error: null);
     try {
       await _service.setSelectedLlmModelId(id);
+      await _service.setApiKey(selected.apiKey);
+      await _service.setBaseUrl(selected.baseUrl);
       state = state.copyWith(selectedLlmModelId: id, isLoading: false);
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);

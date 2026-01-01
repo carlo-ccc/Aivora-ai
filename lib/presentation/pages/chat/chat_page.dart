@@ -1,14 +1,20 @@
+import 'dart:convert';
+import 'dart:developer' as developer;
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uuid/uuid.dart';
-import '../../../data/models/message_model.dart';
-import '../../providers/auth_provider.dart';
-import '../../../data/services/ai_service.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../../data/services/vision_label_service.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../../data/models/message_model.dart';
+import '../../../data/services/ai_service.dart';
+import '../../../data/services/setting_service.dart';
 import '../../../data/services/tflite_food_classifier_service.dart';
-import 'dart:typed_data';
+import '../../../data/services/vision_label_service.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/settings_service.dart';
 
 enum _RecognizeBackend { mlkit, tflite }
@@ -26,7 +32,129 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final _textController = TextEditingController();
   final _uuid = const Uuid();
   bool _isSending = false;
-  String _selectedModel = 'gpt-4o-mini';
+  final Dio _dio = Dio();
+
+  void _logError(String message, Object error, StackTrace stackTrace) {
+    developer.log(
+      message,
+      name: 'Aivora.ChatPage',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+
+  LlmModelConfig? _selectedModelConfig() {
+    final settings = ref.read(settingsProvider);
+    return settings.selectedLlmModel;
+  }
+
+  MessageModel _noModelHintMessage() {
+    return MessageModel(
+      id: _uuid.v4(),
+      content: '提示：尚未在设置中添加模型，已仅使用内置识别结果。可前往「设置」添加模型以启用大模型能力。',
+      isUser: false,
+      timestamp: DateTime.now(),
+      aiModel: null,
+    );
+  }
+
+  Future<String> _recognizeFoodWithApi({
+    required String model,
+    required String baseUrl,
+    required String apiKey,
+    required List<String> labels,
+    Uint8List? imageBytes,
+  }) async {
+    final url = baseUrl.endsWith('/chat/completions') ? baseUrl : '$baseUrl/chat/completions';
+    final headers = {
+      'Authorization': 'Bearer $apiKey',
+      'Content-Type': 'application/json',
+    };
+
+    final prompt =
+        '你是一个食物识别助手。请根据提供的照片（若有）与识别标签：${labels.isEmpty ? '无' : labels.join(', ')}，判断这是什么食物/菜品。只输出一行最终答案，不要解释；如果无法判断只输出“无法判断”。';
+
+    final dynamic userContent;
+    if (imageBytes != null) {
+      final b64 = base64Encode(imageBytes);
+      userContent = [
+        {
+          'type': 'text',
+          'text': prompt,
+        },
+        {
+          'type': 'image_url',
+          'image_url': {'url': 'data:image/jpeg;base64,$b64'},
+        },
+      ];
+    } else {
+      userContent = prompt;
+    }
+
+    final payload = {
+      'model': model,
+      'messages': [
+        {
+          'role': 'user',
+          'content': userContent,
+        }
+      ],
+      'temperature': 0.2,
+    };
+
+    late final Response resp;
+    try {
+      resp = await _dio.post(
+        url,
+        data: payload,
+        options: Options(headers: headers, responseType: ResponseType.json),
+      );
+    } on DioException catch (e, st) {
+      _logError(
+        'API 请求失败: ${e.type} ${e.message ?? ''} url=$url',
+        e,
+        st,
+      );
+      rethrow;
+    } catch (e, st) {
+      _logError('API 请求失败: url=$url', e, st);
+      rethrow;
+    }
+
+    final data = resp.data;
+    String? contentText;
+
+    if (data is Map<String, dynamic>) {
+      final choices = data['choices'];
+      if (choices is List && choices.isNotEmpty) {
+        final first = choices.first;
+        if (first is Map<String, dynamic>) {
+          final message = first['message'];
+          if (message is Map<String, dynamic>) {
+            final c = message['content'];
+            if (c is String && c.isNotEmpty) {
+              contentText = c;
+            } else if (c is List && c.isNotEmpty) {
+              final buffer = StringBuffer();
+              for (final part in c) {
+                if (part is Map<String, dynamic>) {
+                  final t = part['text'];
+                  if (t is String) buffer.write(t);
+                }
+              }
+              if (buffer.isNotEmpty) contentText = buffer.toString();
+            }
+          }
+        }
+      }
+    }
+
+    if (contentText == null || contentText.trim().isEmpty) {
+      throw Exception('响应格式不正确或为空');
+    }
+
+    return contentText.trim().split('\n').first.trim();
+  }
 
   Future<void> _openCamera({required _RecognizeBackend backend}) async {
     try {
@@ -77,18 +205,46 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       final result = await vision.labelFoodFromFile(file.path);
       final labels = result.labels;
 
-      final unreliable = !result.isFood || result.topConfidence < 0.70 || labels.isEmpty;
-      final attachImage = unreliable && _modelSupportsVision(_selectedModel);
+      const threshold = 0.70;
+      final selected = _selectedModelConfig();
+      final modelName = selected?.name ?? '';
+      final canAttachImage = selected != null && _modelSupportsVision(modelName);
+      final reliable = result.isFood && result.topConfidence >= threshold && labels.isNotEmpty;
 
-      final settingsState = ref.read(settingsProvider);
-      final apiKey = settingsState.apiKey ?? '';
-      if (apiKey.isEmpty) {
+      final labelsForLlm = canAttachImage ? (reliable ? labels : <String>[]) : labels;
+      final imageForLlm = canAttachImage ? pickedImageBytes : null;
+
+      setState(() {
+        _messages.add(
+          MessageModel(
+            id: _uuid.v4(),
+            content:
+                '内置识别（ML Kit）：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}，是否可靠：${reliable ? '是' : '否'}',
+            isUser: false,
+            timestamp: DateTime.now(),
+            aiModel: null,
+          ),
+        );
+      });
+      _scrollToBottom();
+
+      if (selected == null) {
+        setState(() {
+          _messages.add(_noModelHintMessage());
+          _isSending = false;
+        });
+        _scrollToBottom();
+        return;
+      }
+
+      final apiKey = selected.apiKey;
+      final baseUrl = selected.baseUrl;
+      if (apiKey.trim().isEmpty || baseUrl.trim().isEmpty || modelName.trim().isEmpty) {
         setState(() {
           _messages.add(
             MessageModel(
               id: _uuid.v4(),
-              content:
-                  'ML Kit 识别到的物体为：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}, 是否可靠：${unreliable ? '否' : '是'}\n\n未配置 API Key，无法执行模型视觉分析。配置 API Key 后，将结合标签${attachImage ? '与照片' : ''}提供营养分析与建议。',
+              content: '提示：当前模型配置不完整（Name/Base URL/API Key），已仅使用内置识别结果。',
               isUser: false,
               timestamp: DateTime.now(),
               aiModel: null,
@@ -96,39 +252,41 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           );
           _isSending = false;
         });
-
         _scrollToBottom();
         return;
       }
 
-      final ai = ref.read(aiServiceProvider);
-      final reply = await ai.analyzeFood(
-        model: _selectedModel,
-        labels: labels,
-        imageBytes: attachImage ? pickedImageBytes : null,
-      );
+      try {
+        final llmRecognized = await _recognizeFoodWithApi(
+          model: modelName,
+          baseUrl: baseUrl,
+          apiKey: apiKey,
+          labels: labelsForLlm,
+          imageBytes: imageForLlm,
+        );
 
-      setState(() {
-        _messages.add(
-          MessageModel(
-            id: _uuid.v4(),
-            content: 'ML Kit 识别到的物体为：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}, 是否可靠：${unreliable ? '否' : '是'}',
-            isUser: false,
-            timestamp: DateTime.now(),
-            aiModel: null,
-          ),
-        );
-        _messages.add(
-          MessageModel(
-            id: _uuid.v4(),
-            content: reply,
-            isUser: false,
-            timestamp: DateTime.now(),
-            aiModel: _selectedModel,
-          ),
-        );
-        _isSending = false;
-      });
+        setState(() {
+          _messages.add(
+            MessageModel(
+              id: _uuid.v4(),
+              content: '大模型识别（$modelName）：$llmRecognized',
+              isUser: false,
+              timestamp: DateTime.now(),
+              aiModel: modelName,
+            ),
+          );
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('大模型识别失败：$e')),
+          );
+        }
+      } finally {
+        setState(() {
+          _isSending = false;
+        });
+      }
 
       _scrollToBottom();
     } catch (e) {
@@ -137,7 +295,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('图片识别/分析失败：$e')),
+          SnackBar(content: Text('图片识别失败：$e')),
         );
       }
     }
@@ -168,18 +326,46 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       final result = await classifier.classifyFoodFromBytes(pickedImageBytes);
       final labels = result.labels;
 
-      final unreliable = result.topConfidence < 0.70 || labels.isEmpty;
-      final attachImage = unreliable && _modelSupportsVision(_selectedModel);
+      const threshold = 0.70;
+      final selected = _selectedModelConfig();
+      final modelName = selected?.name ?? '';
+      final canAttachImage = selected != null && _modelSupportsVision(modelName);
+      final reliable = result.topConfidence >= threshold && labels.isNotEmpty;
 
-      final settingsState = ref.read(settingsProvider);
-      final apiKey = settingsState.apiKey ?? '';
-      if (apiKey.isEmpty) {
+      final labelsForLlm = canAttachImage ? (reliable ? labels : <String>[]) : labels;
+      final imageForLlm = canAttachImage ? pickedImageBytes : null;
+
+      setState(() {
+        _messages.add(
+          MessageModel(
+            id: _uuid.v4(),
+            content:
+                '内置识别（TFLite）：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}，是否可靠：${reliable ? '是' : '否'}',
+            isUser: false,
+            timestamp: DateTime.now(),
+            aiModel: null,
+          ),
+        );
+      });
+      _scrollToBottom();
+
+      if (selected == null) {
+        setState(() {
+          _messages.add(_noModelHintMessage());
+          _isSending = false;
+        });
+        _scrollToBottom();
+        return;
+      }
+
+      final apiKey = selected.apiKey;
+      final baseUrl = selected.baseUrl;
+      if (apiKey.trim().isEmpty || baseUrl.trim().isEmpty || modelName.trim().isEmpty) {
         setState(() {
           _messages.add(
             MessageModel(
               id: _uuid.v4(),
-              content:
-                  'TFLite 识别到的食物为：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}, 是否可靠：${unreliable ? '否' : '是'}\n\n未配置 API Key，无法执行模型视觉分析。配置 API Key 后，将结合标签${attachImage ? '与照片' : ''}提供营养分析与建议。',
+              content: '提示：当前模型配置不完整（Name/Base URL/API Key），已仅使用内置识别结果。',
               isUser: false,
               timestamp: DateTime.now(),
               aiModel: null,
@@ -187,39 +373,41 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           );
           _isSending = false;
         });
-
         _scrollToBottom();
         return;
       }
 
-      final ai = ref.read(aiServiceProvider);
-      final reply = await ai.analyzeFood(
-        model: _selectedModel,
-        labels: labels,
-        imageBytes: attachImage ? pickedImageBytes : null,
-      );
+      try {
+        final llmRecognized = await _recognizeFoodWithApi(
+          model: modelName,
+          baseUrl: baseUrl,
+          apiKey: apiKey,
+          labels: labelsForLlm,
+          imageBytes: imageForLlm,
+        );
 
-      setState(() {
-        _messages.add(
-          MessageModel(
-            id: _uuid.v4(),
-            content: 'TFLite 识别到的食物为：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}, 是否可靠：${unreliable ? '否' : '是'}',
-            isUser: false,
-            timestamp: DateTime.now(),
-            aiModel: null,
-          ),
-        );
-        _messages.add(
-          MessageModel(
-            id: _uuid.v4(),
-            content: reply,
-            isUser: false,
-            timestamp: DateTime.now(),
-            aiModel: _selectedModel,
-          ),
-        );
-        _isSending = false;
-      });
+        setState(() {
+          _messages.add(
+            MessageModel(
+              id: _uuid.v4(),
+              content: '大模型识别（$modelName）：$llmRecognized',
+              isUser: false,
+              timestamp: DateTime.now(),
+              aiModel: modelName,
+            ),
+          );
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('大模型识别失败：$e')),
+          );
+        }
+      } finally {
+        setState(() {
+          _isSending = false;
+        });
+      }
 
       _scrollToBottom();
     } catch (e) {
@@ -228,7 +416,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('图片识别/分析失败：$e')),
+          SnackBar(content: Text('图片识别失败：$e')),
         );
       }
     }
@@ -273,6 +461,24 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     _scrollToBottom();
 
     try {
+      final selected = _selectedModelConfig();
+      if (selected == null) {
+        setState(() {
+          _messages.add(
+            MessageModel(
+              id: _uuid.v4(),
+              content: '提示：尚未在设置中添加模型，无法发送到大模型。请前往「设置」添加模型。',
+              isUser: false,
+              timestamp: DateTime.now(),
+              aiModel: null,
+            ),
+          );
+          _isSending = false;
+        });
+        _scrollToBottom();
+        return;
+      }
+
       final ai = ref.read(aiServiceProvider);
       final history = _messages
           .where((m) => m.content.trim().isNotEmpty)
@@ -283,7 +489,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           .toList();
 
       final reply = await ai.sendChat(
-        model: _selectedModel,
+        model: selected.name,
         messages: history,
       );
 
@@ -294,7 +500,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             content: reply,
             isUser: false,
             timestamp: DateTime.now(),
-            aiModel: _selectedModel,
+            aiModel: selected.name,
           ),
         );
         _isSending = false;
@@ -312,16 +518,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
 
-  void _selectModel(String model) {
-    setState(() {
-      _selectedModel = model;
-    });
+  void _selectModel(String modelId) {
+    ref.read(settingsProvider.notifier).setSelectedLlmModel(modelId);
   }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final user = authState.user;
+    final settingsState = ref.watch(settingsProvider);
+    final selectedName = settingsState.selectedLlmModel?.name ?? '未配置';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7F9),
@@ -344,7 +550,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             ),
             const SizedBox(height: 2),
             Text(
-              '模型 $_selectedModel',
+              '模型 $selectedName',
               style: const TextStyle(
                 fontSize: 12.5,
                 color: Colors.black54,
@@ -354,7 +560,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         ),
         actions: [
           _ModelPicker(
-            current: _selectedModel,
+            models: settingsState.llmModels,
+            currentId: settingsState.selectedLlmModelId,
             onSelected: _selectModel,
           ),
           PopupMenuButton<String>(
@@ -564,40 +771,44 @@ class _MessageBubble extends StatelessWidget {
 }
 
 class _ModelPicker extends StatelessWidget {
-  final String current;
+  final List<LlmModelConfig> models;
+  final String? currentId;
   final ValueChanged<String> onSelected;
-  const _ModelPicker({required this.current, required this.onSelected});
+  const _ModelPicker({
+    required this.models,
+    required this.currentId,
+    required this.onSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final models = const [
-      'gpt-4o-mini',
-      'gpt-4o',
-      'llama-3.1',
-      'custom',
-    ];
+    if (models.isEmpty) return const SizedBox.shrink();
+
     return PopupMenuButton<String>(
-      initialValue: current,
+      initialValue: currentId,
       icon: const Icon(Icons.tune, color: Colors.black54),
       color: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       onSelected: onSelected,
       itemBuilder: (context) {
         return models
-            .map((m) => PopupMenuItem<String>(
-                  value: m,
-                  child: Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (m == current) const Icon(Icons.check, size: 18, color: Colors.black54),
-                        if (m == current) const SizedBox(width: 6),
-                        Text(m),
-                      ],
-                    ),
+            .map((m) {
+              final selected = m.id == currentId;
+              return PopupMenuItem<String>(
+                value: m.id,
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (selected) const Icon(Icons.check, size: 18, color: Colors.black54),
+                      if (selected) const SizedBox(width: 6),
+                      Text(m.name),
+                    ],
                   ),
-                ))
+                ),
+              );
+            })
             .toList();
       },
     );

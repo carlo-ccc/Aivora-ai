@@ -35,6 +35,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final Dio _dio = Dio();
 
   void _logError(String message, Object error, StackTrace stackTrace) {
+    debugPrint('[Aivora.ChatPage] $message');
     developer.log(
       message,
       name: 'Aivora.ChatPage',
@@ -58,6 +59,32 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
+  String _buildChatCompletionsUrl(String baseUrl) {
+    var u = baseUrl.trim();
+    while (u.endsWith('/')) {
+      u = u.substring(0, u.length - 1);
+    }
+    if (u.endsWith('/chat/completions')) return u;
+    return '$u/chat/completions';
+  }
+
+  String _truncateForUi(String s, {int max = 400}) {
+    if (s.length <= max) return s;
+    return '${s.substring(0, max)}...';
+  }
+
+  String _formatRequestError(Object e) {
+    if (e is DioException) {
+      final status = e.response?.statusCode;
+      final url = e.requestOptions.uri.toString();
+      final data = e.response?.data;
+      final dataStr = data == null ? '' : _truncateForUi(data.toString());
+      if (dataStr.isEmpty) return '请求失败($status): $url';
+      return '请求失败($status): $url\n$dataStr';
+    }
+    return e.toString();
+  }
+
   Future<String> _recognizeFoodWithApi({
     required String model,
     required String baseUrl,
@@ -65,7 +92,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     required List<String> labels,
     Uint8List? imageBytes,
   }) async {
-    final url = baseUrl.endsWith('/chat/completions') ? baseUrl : '$baseUrl/chat/completions';
+    final url = _buildChatCompletionsUrl(baseUrl);
     final headers = {
       'Authorization': 'Bearer $apiKey',
       'Content-Type': 'application/json',
@@ -110,8 +137,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         options: Options(headers: headers, responseType: ResponseType.json),
       );
     } on DioException catch (e, st) {
+      final req = e.requestOptions;
+      final respData = e.response?.data;
+      final respDataStr = respData == null ? '' : _truncateForUi(respData.toString(), max: 800);
+      final labelsPreview = labels.length <= 12 ? labels : labels.take(12).toList(growable: false);
+
       _logError(
-        'API 请求失败: ${e.type} ${e.message ?? ''} url=$url',
+        'API 请求失败 type=${e.type} status=${e.response?.statusCode}\n'
+        'method=${req.method}\n'
+        'url=${req.uri}\n'
+        'model=$model\n'
+        'attachImage=${imageBytes != null} imageBytes=${imageBytes?.length ?? 0}\n'
+        'labels(${labels.length})=${labelsPreview.join(', ')}\n'
+        'response=$respDataStr',
         e,
         st,
       );
@@ -279,7 +317,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('大模型识别失败：$e')),
+            SnackBar(content: Text('大模型识别失败：${_formatRequestError(e)}')),
           );
         }
       } finally {
@@ -400,7 +438,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('大模型识别失败：$e')),
+            SnackBar(content: Text('大模型识别失败：${_formatRequestError(e)}')),
           );
         }
       } finally {

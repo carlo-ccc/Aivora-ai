@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'setting_service.dart';
 import '../../presentation/providers/settings_service.dart';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:typed_data';
 
 class AiService {
@@ -11,22 +12,38 @@ class AiService {
 
   AiService(this._settings);
 
+  String _buildChatCompletionsUrl(String baseUrl) {
+    var u = baseUrl.trim();
+    while (u.endsWith('/')) {
+      u = u.substring(0, u.length - 1);
+    }
+    if (u.isEmpty) {
+      throw Exception('请先在设置中配置 Base URL');
+    }
+    if (u.endsWith('/chat/completions')) return u;
+    return '$u/chat/completions';
+  }
+
   Future<String> sendChat({
     required String model,
     required List<Map<String, String>> messages,
+    String? baseUrl,
+    String? apiKey,
   }) async {
-    final baseUrl = await _settings.getBaseUrl();
-    final apiKey = await _settings.getApiKey();
-    if (apiKey == null || apiKey.isEmpty) {
+    final effectiveBaseUrl = (baseUrl != null && baseUrl.trim().isNotEmpty)
+        ? baseUrl
+        : await _settings.getBaseUrl();
+    final effectiveApiKey = (apiKey != null && apiKey.trim().isNotEmpty)
+        ? apiKey
+        : await _settings.getApiKey();
+
+    if (effectiveApiKey == null || effectiveApiKey.isEmpty) {
       throw Exception('请先在设置中配置 API Key');
     }
 
-    // 兼容 OpenAI/OpenRouter/Groq（OpenAI 兼容接口）：chat/completions
-    final url = baseUrl.endsWith('/chat/completions')
-        ? baseUrl
-        : '$baseUrl/chat/completions';
+    final url = _buildChatCompletionsUrl(effectiveBaseUrl);
     final headers = {
-      'Authorization': 'Bearer $apiKey',
+      'Authorization': 'Bearer $effectiveApiKey',
       'Content-Type': 'application/json',
     };
 
@@ -36,11 +53,27 @@ class AiService {
       'temperature': 0.7,
     };
 
-    final resp = await _dio.post(
-      url,
-      data: payload,
-      options: Options(headers: headers, responseType: ResponseType.json),
-    );
+    late final Response resp;
+    try {
+      resp = await _dio.post(
+        url,
+        data: payload,
+        options: Options(headers: headers, responseType: ResponseType.json),
+      );
+    } on DioException catch (e, st) {
+      final msg =
+          'AI 请求失败 status=${e.response?.statusCode} url=${e.requestOptions.uri} data=${e.response?.data}';
+      print('[Aivora.AiService] $msg');
+      developer.log(
+        msg,
+        name: 'Aivora.AiService',
+        error: e,
+        stackTrace: st,
+      );
+      throw Exception(
+        '请求失败(${e.response?.statusCode}): ${e.response?.data ?? e.message ?? e.type}',
+      );
+    }
 
     final data = resp.data;
     String? content;
@@ -71,16 +104,23 @@ class AiService {
     required String model,
     required List<String> labels,
     Uint8List? imageBytes,
+    String? baseUrl,
+    String? apiKey,
   }) async {
-    final baseUrl = await _settings.getBaseUrl();
-    final apiKey = await _settings.getApiKey();
-    if (apiKey == null || apiKey.isEmpty) {
+    final effectiveBaseUrl = (baseUrl != null && baseUrl.trim().isNotEmpty)
+        ? baseUrl
+        : await _settings.getBaseUrl();
+    final effectiveApiKey = (apiKey != null && apiKey.trim().isNotEmpty)
+        ? apiKey
+        : await _settings.getApiKey();
+
+    if (effectiveApiKey == null || effectiveApiKey.isEmpty) {
       throw Exception('请先在设置中配置 API Key');
     }
 
-    final url = '$baseUrl/chat/completions';
+    final url = _buildChatCompletionsUrl(effectiveBaseUrl);
     final headers = {
-      'Authorization': 'Bearer $apiKey',
+      'Authorization': 'Bearer $effectiveApiKey',
       'Content-Type': 'application/json',
     };
 
@@ -114,11 +154,27 @@ class AiService {
       ],
     };
 
-    final resp = await _dio.post(
-      url,
-      data: payload,
-      options: Options(headers: headers, responseType: ResponseType.json),
-    );
+    late final Response resp;
+    try {
+      resp = await _dio.post(
+        url,
+        data: payload,
+        options: Options(headers: headers, responseType: ResponseType.json),
+      );
+    } on DioException catch (e, st) {
+      final msg =
+          'AI 请求失败 status=${e.response?.statusCode} url=${e.requestOptions.uri} data=${e.response?.data}';
+      print('[Aivora.AiService] $msg');
+      developer.log(
+        msg,
+        name: 'Aivora.AiService',
+        error: e,
+        stackTrace: st,
+      );
+      throw Exception(
+        '请求失败(${e.response?.statusCode}): ${e.response?.data ?? e.message ?? e.type}',
+      );
+    }
 
     final data = resp.data;
     String? contentText;

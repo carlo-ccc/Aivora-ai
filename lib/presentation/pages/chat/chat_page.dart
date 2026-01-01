@@ -90,6 +90,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     required String baseUrl,
     required String apiKey,
     required List<String> labels,
+    required String builtInRecognitionSummary,
     Uint8List? imageBytes,
   }) async {
     final url = _buildChatCompletionsUrl(baseUrl);
@@ -99,7 +100,18 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     };
 
     final prompt =
-        '你是一个食物识别助手。请根据提供的照片（若有）与识别标签：${labels.isEmpty ? '无' : labels.join(', ')}，判断这是什么食物/菜品。只输出一行最终答案，不要解释；如果无法判断只输出“无法判断”。';
+        '你是一个食物识别与营养估算助手。\n'
+        '内置识别结果（供参考，可能有误）：$builtInRecognitionSummary\n'
+        '识别标签：${labels.isEmpty ? '无' : labels.join(', ')}\n'
+        '任务：若有照片，请先仅根据照片判断食物/菜品；若你无法从照片中确认或把握不大，再结合内置识别结果与标签进行推断。\n'
+        '当你已经识别出食物/菜品后，请进一步估算它的营养成分（按每 100g 估算即可，允许使用常见食物数据库的典型值做近似），并用中文返回。\n'
+        '如果仍无法判断，只输出“无法判断”。\n'
+        '输出格式（严格遵守，多行）：\n'
+        '菜品：<名称>\n'
+        '热量：约 <kcal> 千卡/100g\n'
+        '宏量：蛋白质 <g>g；脂肪 <g>g；碳水 <g>g（每100g）\n'
+        '其他：膳食纤维 <g>g；糖 <g>g；钠 <mg>mg（不确定可写“约”或留空）\n'
+        '提示：不需要解释推理过程。';
 
     final dynamic userContent;
     if (imageBytes != null) {
@@ -191,7 +203,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       throw Exception('响应格式不正确或为空');
     }
 
-    return contentText.trim().split('\n').first.trim();
+    return contentText.trim();
   }
 
   Future<void> _openCamera({required _RecognizeBackend backend}) async {
@@ -249,15 +261,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       final canAttachImage = selected != null && _modelSupportsVision(modelName);
       final reliable = result.isFood && result.topConfidence >= threshold && labels.isNotEmpty;
 
-      final labelsForLlm = canAttachImage ? (reliable ? labels : <String>[]) : labels;
+      final builtInSummary =
+          '内置识别（ML Kit）：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}，是否可靠：${reliable ? '是' : '否'}';
+
+      final labelsForLlm = labels;
       final imageForLlm = canAttachImage ? pickedImageBytes : null;
 
       setState(() {
         _messages.add(
           MessageModel(
             id: _uuid.v4(),
-            content:
-                '内置识别（ML Kit）：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}，是否可靠：${reliable ? '是' : '否'}',
+            content: builtInSummary,
             isUser: false,
             timestamp: DateTime.now(),
             aiModel: null,
@@ -300,6 +314,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           baseUrl: baseUrl,
           apiKey: apiKey,
           labels: labelsForLlm,
+          builtInRecognitionSummary: builtInSummary,
           imageBytes: imageForLlm,
         );
 
@@ -370,15 +385,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       final canAttachImage = selected != null && _modelSupportsVision(modelName);
       final reliable = result.topConfidence >= threshold && labels.isNotEmpty;
 
-      final labelsForLlm = canAttachImage ? (reliable ? labels : <String>[]) : labels;
+      final builtInSummary =
+          '内置识别（TFLite）：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}，是否可靠：${reliable ? '是' : '否'}';
+
+      final labelsForLlm = labels;
       final imageForLlm = canAttachImage ? pickedImageBytes : null;
 
       setState(() {
         _messages.add(
           MessageModel(
             id: _uuid.v4(),
-            content:
-                '内置识别（TFLite）：${labels.isEmpty ? '无' : labels.join(', ')}，置信度：${result.topConfidence.toStringAsFixed(2)}，是否可靠：${reliable ? '是' : '否'}',
+            content: builtInSummary,
             isUser: false,
             timestamp: DateTime.now(),
             aiModel: null,
@@ -421,6 +438,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           baseUrl: baseUrl,
           apiKey: apiKey,
           labels: labelsForLlm,
+          builtInRecognitionSummary: builtInSummary,
           imageBytes: imageForLlm,
         );
 
@@ -517,6 +535,25 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         return;
       }
 
+      final apiKey = selected.apiKey.trim();
+      final baseUrl = selected.baseUrl.trim();
+      if (apiKey.isEmpty || baseUrl.isEmpty) {
+        setState(() {
+          _messages.add(
+            MessageModel(
+              id: _uuid.v4(),
+              content: '提示：当前模型配置不完整（Base URL/API Key），无法发送到大模型。请前往「设置」完善配置。',
+              isUser: false,
+              timestamp: DateTime.now(),
+              aiModel: null,
+            ),
+          );
+          _isSending = false;
+        });
+        _scrollToBottom();
+        return;
+      }
+
       final ai = ref.read(aiServiceProvider);
       final history = _messages
           .where((m) => m.content.trim().isNotEmpty)
@@ -529,6 +566,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       final reply = await ai.sendChat(
         model: selected.name,
         messages: history,
+        baseUrl: baseUrl,
+        apiKey: apiKey,
       );
 
       setState(() {
